@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment Variables (보안)
+.env
+config.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Railway 배포 제외 파일들
+# Local development tools
+.claude/
+
+# Windows specific
+*.bat
+
+# Crawler data
+_ul/
+_ul
+
+# Work notes
+진행.txt
+
+# Crawler scripts (현재 미사용)
+25.7.24 gongsiljeonse.py
+25.7.24 gongsilrent.py
+25.7.24 onhajeonse.py
+25.7.24 onharent.py
+
+# Example/Development files
+example_usage.py
+blueprint.py
+load_env.py
+
+# Documentation (선택사항)
+DEPLOY_GUIDE.md
+railway_deploy.md
+README.md
