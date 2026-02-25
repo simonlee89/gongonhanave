@@ -287,23 +287,23 @@
             <div class="filter-row region-row">
               <div class="filter-label">지역</div>
               <div class="filter-radio-group" id="region-group">
-                <label class="radio-btn"><input type="checkbox" name="region" value="gangnam" checked />강남</label>
-                <label class="radio-btn"><input type="checkbox" name="region" value="songpa" checked />송파</label>
+                <label class="radio-btn"><input type="checkbox" name="region" value="gangnam" />강남</label>
+                <label class="radio-btn"><input type="checkbox" name="region" value="songpa" />송파</label>
               </div>
             </div>
             <div class="filter-row status-row">
               <div class="filter-label">구분</div>
               <div class="filter-radio-group" id="status-group">
-                <label class="radio-btn"><input type="checkbox" name="status" value="전세" checked />전세</label>
-                <label class="radio-btn"><input type="checkbox" name="status" value="월세" checked />월세</label>
+                <label class="radio-btn"><input type="checkbox" name="status" value="전세" />전세</label>
+                <label class="radio-btn"><input type="checkbox" name="status" value="월세" />월세</label>
               </div>
             </div>
             <div class="filter-row status-row">
               <div class="filter-label">매물 상태</div>
               <div class="filter-radio-group" id="category-group">
-                <label class="radio-btn"><input type="checkbox" name="category" value="공클" checked />공클</label>
-                <label class="radio-btn"><input type="checkbox" name="category" value="온하" checked />온하</label>
-                <label class="radio-btn"><input type="checkbox" name="category" value="갠매" checked />갠매</label>
+                <label class="radio-btn"><input type="checkbox" name="category" value="공클" />공클</label>
+                <label class="radio-btn"><input type="checkbox" name="category" value="온하" />온하</label>
+                <label class="radio-btn"><input type="checkbox" name="category" value="갠매" />갠매</label>
               </div>
               <label style="margin-left:11px; font-weight:600; color:#3182F6; cursor:pointer; user-select:none; font-size:13px;">
                 <input type="checkbox" id="singleOnlyCheckbox" style="vertical-align:middle; margin-right:4px;" />매물1개만
@@ -612,10 +612,8 @@
                     console.log(`[DEBUG] 빙고 추가: ${link}`);
                 }
 
-                // 마커 갱신 (현재 필터된 결과 다시 표시)
-                if (filteredProperties.length > 0) {
-                    displayMarkersOnMap();
-                }
+                // 마커 재생성 제거 - UI는 toggleBingoFromInfo에서 즉시 업데이트됨
+                // 마커 색상 변경은 다음 검색/필터 시 반영됨 (성능 최적화)
             } catch (error) {
                 console.error('빙고 토글 오류:', error);
                 alert('빙고 처리 중 오류가 발생했습니다: ' + error.message);
