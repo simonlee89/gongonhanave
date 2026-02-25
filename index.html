@@ -259,6 +259,17 @@
         </div>
       </div>
     </div>
+    <!-- 관리자 인증 모달 -->
+    <div id="adminModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:10000; display:none; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,0.18); padding:32px; min-width:280px; text-align:center;">
+            <h3 style="margin-bottom:16px; color:#FFD700;">관리자 인증</h3>
+            <input type="password" id="adminPasswordInput" placeholder="관리자 비밀번호" style="font-size:18px; padding:10px 14px; border-radius:8px; border:1.5px solid #FFD700; margin-bottom:14px; width:80%;" />
+            <br/>
+            <button id="adminSubmitBtn" style="background:#FFD700; color:#333; font-weight:700; border:none; border-radius:8px; padding:10px 24px; font-size:16px; cursor:pointer;">확인</button>
+            <button id="adminCancelBtn" style="margin-left:8px; background:#E5E8EB; color:#333D4B; font-weight:600; border:none; border-radius:8px; padding:10px 18px; font-size:15px; cursor:pointer;">취소</button>
+            <div id="adminError" style="color:#e74c3c; margin-top:10px; font-size:14px;"></div>
+        </div>
+    </div>
     <div class="map-container">
         <div id="map"></div>
         <button class="filter-toggle-btn" id="filterToggleBtn">필터 접기</button>
@@ -276,26 +287,29 @@
             <div class="filter-row region-row">
               <div class="filter-label">지역</div>
               <div class="filter-radio-group" id="region-group">
-                <label class="radio-btn"><input type="radio" name="region" value="gangnam" checked />강남</label>
-                <label class="radio-btn"><input type="radio" name="region" value="songpa" />송파</label>
+                <label class="radio-btn"><input type="checkbox" name="region" value="gangnam" checked />강남</label>
+                <label class="radio-btn"><input type="checkbox" name="region" value="songpa" checked />송파</label>
               </div>
             </div>
             <div class="filter-row status-row">
               <div class="filter-label">구분</div>
               <div class="filter-radio-group" id="status-group">
-                <label class="radio-btn"><input type="radio" name="status" value="전세" checked />전세</label>
-                <label class="radio-btn"><input type="radio" name="status" value="월세" />월세</label>
+                <label class="radio-btn"><input type="checkbox" name="status" value="전세" checked />전세</label>
+                <label class="radio-btn"><input type="checkbox" name="status" value="월세" checked />월세</label>
               </div>
             </div>
             <div class="filter-row status-row">
               <div class="filter-label">매물 상태</div>
               <div class="filter-radio-group" id="category-group">
-                <label class="radio-btn"><input type="radio" name="category" value="공클" checked />공클</label>
-                <label class="radio-btn"><input type="radio" name="category" value="온하" />온하</label>
-                <label class="radio-btn"><input type="radio" name="category" value="갠매" />갠매</label>
+                <label class="radio-btn"><input type="checkbox" name="category" value="공클" checked />공클</label>
+                <label class="radio-btn"><input type="checkbox" name="category" value="온하" checked />온하</label>
+                <label class="radio-btn"><input type="checkbox" name="category" value="갠매" checked />갠매</label>
               </div>
               <label style="margin-left:11px; font-weight:600; color:#3182F6; cursor:pointer; user-select:none; font-size:13px;">
                 <input type="checkbox" id="singleOnlyCheckbox" style="vertical-align:middle; margin-right:4px;" />매물1개만
+              </label>
+              <label style="margin-left:11px; font-weight:600; color:#FFD700; cursor:pointer; user-select:none; font-size:13px; background:#333; padding:4px 8px; border-radius:4px;">
+                <input type="checkbox" id="bingoOnlyCheckbox" style="vertical-align:middle; margin-right:4px;" />빙고
               </label>
             </div>
             <div class="filter-row price-row">
@@ -348,6 +362,10 @@
         <div style="position: absolute; top: 18px; right: 18px; background: #191F28; color: white; padding: 12px 20px; border-radius: 10px; font-size: 16px; font-weight: 600; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" id="totalCount">
             총 매물: 0개
         </div>
+        <!-- 관리자 모드 버튼 -->
+        <button id="adminModeBtn" style="position: absolute; top: 60px; right: 18px; background: #6B7684; color: white; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); border: none; cursor: pointer;">
+            관리자
+        </div>
         <div style="position: absolute; top: 100px; right: 18px; background: #6366F1; color: white; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" id="shownCount">
             표시 중: 0개
         </div>
@@ -369,6 +387,11 @@
         let lastLoadedRegion = 'gangnam'; // 마지막으로 로드한 지역 추적
         let CONFIG = null; // 설정 정보 (API에서 로드)
         let appInitialized = false; // 비밀번호 인증 후 앱 초기화 플래그
+
+        // 빙고 기능 관련 전역 변수
+        let isAdminMode = false; // 관리자 모드 활성화 여부
+        let bingoData = []; // 빙고 테이블 데이터
+        let bingoLinks = new Set(); // 빙고 매물 링크 Set (빠른 조회용)
 
         // 기본 비밀번호
         const DEFAULT_PASSWORD = 'ejxkqdnjs1';
@@ -449,6 +472,194 @@
             };
         });
 
+        // 관리자 모드 비밀번호
+        const ADMIN_MODE_PASSWORD = '159';
+
+        // 관리자 모드 이벤트 핸들러 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            const adminModeBtn = document.getElementById('adminModeBtn');
+            const adminModal = document.getElementById('adminModal');
+            const adminPasswordInput = document.getElementById('adminPasswordInput');
+            const adminSubmitBtn = document.getElementById('adminSubmitBtn');
+            const adminCancelBtn = document.getElementById('adminCancelBtn');
+            const adminError = document.getElementById('adminError');
+
+            // 관리자 버튼 클릭
+            adminModeBtn.addEventListener('click', function() {
+                if (isAdminMode) {
+                    // 관리자 모드 해제
+                    isAdminMode = false;
+                    updateAdminModeUI();
+                    updateStatus('관리자 모드 해제됨');
+                } else {
+                    // 관리자 인증 모달 표시
+                    adminModal.style.display = 'flex';
+                    adminPasswordInput.value = '';
+                    adminError.textContent = '';
+                    adminPasswordInput.focus();
+                }
+            });
+
+            // 관리자 인증 처리
+            function tryAdminAuth() {
+                if (adminPasswordInput.value === ADMIN_MODE_PASSWORD) {
+                    isAdminMode = true;
+                    adminModal.style.display = 'none';
+                    updateAdminModeUI();
+                    updateStatus('관리자 모드 활성화됨 - 별표를 클릭해서 빙고에 추가하세요');
+                } else {
+                    adminError.textContent = '비밀번호가 올바르지 않습니다.';
+                    adminPasswordInput.value = '';
+                    adminPasswordInput.focus();
+                }
+            }
+
+            adminSubmitBtn.addEventListener('click', tryAdminAuth);
+            adminPasswordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') tryAdminAuth();
+            });
+            adminCancelBtn.addEventListener('click', function() {
+                adminModal.style.display = 'none';
+            });
+        });
+
+        // 관리자 모드 UI 업데이트
+        function updateAdminModeUI() {
+            const btn = document.getElementById('adminModeBtn');
+            if (isAdminMode) {
+                btn.style.background = '#FFD700';
+                btn.style.color = '#333';
+                btn.textContent = '관리자 ON';
+            } else {
+                btn.style.background = '#6B7684';
+                btn.style.color = 'white';
+                btn.textContent = '관리자';
+            }
+        }
+
+        // 빙고 토글 함수 (별표 클릭 시 호출)
+        async function toggleBingo(property) {
+            if (!isAdminMode) {
+                alert('관리자 모드에서만 빙고를 추가/해제할 수 있습니다.');
+                return;
+            }
+
+            const link = property['링크(URL)'] || property.링크 || property.url || property.URL;
+            if (!link) {
+                alert('링크가 없는 매물은 빙고에 추가할 수 없습니다.');
+                return;
+            }
+
+            try {
+                if (bingoLinks.has(link)) {
+                    // 빙고 해제: 테이블에서 DELETE
+                    updateStatus('빙고 해제 중...');
+                    const { error } = await supabaseClient
+                        .from('빙고')
+                        .delete()
+                        .eq('"링크(URL)"', link);
+
+                    if (error) throw error;
+
+                    bingoLinks.delete(link);
+                    // bingoData에서도 제거
+                    bingoData = bingoData.filter(item => {
+                        const itemLink = item['링크(URL)'] || item.링크 || item.url || item.URL;
+                        return itemLink !== link;
+                    });
+                    // properties에서 isBingo 플래그 제거
+                    properties.forEach(p => {
+                        const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                        if (pLink === link) p.isBingo = false;
+                    });
+
+                    updateStatus('빙고 해제됨');
+                    console.log(`[DEBUG] 빙고 해제: ${link}`);
+                } else {
+                    // 빙고 추가: 매물 데이터 전체를 빙고 테이블에 INSERT
+                    updateStatus('빙고 추가 중...');
+                    const insertData = {
+                        주소: property.주소 || '',
+                        거래방식: property.거래방식 || '',
+                        전세금: property.전세금 || '',
+                        월세: property.월세 || '',
+                        공클: property.공클 || '',
+                        온하: property.온하 || '',
+                        갠매: property.갠매 || '',
+                        '링크(URL)': link,
+                        '등록/확인일': property['등록/확인일'] || property.확인일 || property.등록일 || ''
+                    };
+
+                    const { data, error } = await supabaseClient
+                        .from('빙고')
+                        .insert(insertData)
+                        .select();
+
+                    if (error) throw error;
+
+                    bingoLinks.add(link);
+                    // bingoData에 추가
+                    const newBingo = { ...insertData, isBingo: true };
+                    if (data && data[0]) newBingo.id = data[0].id;
+                    bingoData.push(newBingo);
+                    // properties에서 isBingo 플래그 추가
+                    properties.forEach(p => {
+                        const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                        if (pLink === link) p.isBingo = true;
+                    });
+
+                    updateStatus('빙고 추가됨');
+                    console.log(`[DEBUG] 빙고 추가: ${link}`);
+                }
+
+                // 마커 갱신 (현재 필터된 결과 다시 표시)
+                if (filteredProperties.length > 0) {
+                    displayMarkersOnMap();
+                }
+            } catch (error) {
+                console.error('빙고 토글 오류:', error);
+                alert('빙고 처리 중 오류가 발생했습니다: ' + error.message);
+                updateStatus('빙고 처리 오류');
+            }
+        }
+
+        // 전역에서 toggleBingo 호출 가능하도록
+        window.toggleBingo = toggleBingo;
+
+        // 인포윈도우에서 별표 클릭 시 호출되는 함수
+        window.toggleBingoFromInfo = async function(index, link, element) {
+            // 링크로 매물 찾기
+            const property = filteredProperties.find(p => {
+                const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return pLink === link;
+            }) || properties.find(p => {
+                const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return pLink === link;
+            });
+
+            if (!property) {
+                alert('매물 정보를 찾을 수 없습니다.');
+                return;
+            }
+
+            await toggleBingo(property);
+
+            // 별표 스타일 즉시 업데이트
+            const isBingoNow = bingoLinks.has(link);
+            if (element) {
+                element.style.color = isBingoNow ? '#FFD700' : '#ccc';
+                element.style.textShadow = isBingoNow ? '0 0 3px #FFA500' : 'none';
+                element.title = isBingoNow ? '빙고 해제' : '빙고 추가';
+
+                // 부모 카드 배경색도 업데이트
+                const card = element.closest('div[style*="border"]');
+                if (card) {
+                    card.style.background = isBingoNow ? '#FFFBEB' : '#F9FAFB';
+                    card.style.borderColor = isBingoNow ? '#FFD700' : '#E5E8EB';
+                }
+            }
+        };
+
         // 지오코딩 캐시 로드
         function loadGeocodeCache() {
             try {
@@ -495,6 +706,7 @@
                 document.querySelector('input[name="region"][value="gangnam"]').checked = true;
                 document.querySelector('input[name="status"][value="전세"]').checked = true;
                 document.getElementById('singleOnlyCheckbox').checked = false; // 체크박스 초기화
+                document.getElementById('bingoOnlyCheckbox').checked = false; // 빙고 체크박스 초기화
                 document.getElementById('deposit-min').value = '';
                 document.getElementById('deposit-max').value = '';
                 document.getElementById('rent-min').value = '';
@@ -643,38 +855,63 @@
         async function loadProperties() {
             try {
                 updateStatus('매물 데이터 로드 중...');
-                
-                // 네이버지도 테이블 사용
+
+                // 1. 네이버지도 테이블 로드
                 let tableName = '네이버지도';
-                
                 console.log(`[DEBUG] 사용할 테이블: ${tableName}`);
-                
-                // 먼저 전체 데이터 개수 확인
+
                 const { count, error: countError } = await supabaseClient
                     .from(tableName)
                     .select('*', { count: 'exact', head: true });
-                
+
                 if (countError) {
                     console.error(`[DEBUG] 전체 개수 확인 오류:`, countError);
                     throw countError;
                 }
-                
-                console.log(`[DEBUG] 전체 데이터 개수: ${count}개`);
-                
-                // ID 필드가 연속적이지 않을 수 있으므로 순차 처리만 사용
-                console.log(`[DEBUG] 순차 처리 모드로 로드 시작`);
-                properties = await loadPropertiesSequential(tableName, count);
-                
+
+                console.log(`[DEBUG] 네이버지도 데이터 개수: ${count}개`);
+                const naverMapData = await loadPropertiesSequential(tableName, count);
+
+                // 2. 빙고 테이블 로드
+                updateStatus('빙고 데이터 로드 중...');
+                const { data: bingoResult, error: bingoError } = await supabaseClient
+                    .from('빙고')
+                    .select('*');
+
+                if (bingoError) {
+                    console.warn('[DEBUG] 빙고 테이블 로드 오류:', bingoError);
+                    bingoData = [];
+                } else {
+                    bingoData = bingoResult || [];
+                }
+
+                console.log(`[DEBUG] 빙고 데이터 개수: ${bingoData.length}개`);
+
+                // 3. 빙고 데이터에 isBingo 플래그 추가 및 bingoLinks Set 구성
+                bingoLinks = new Set();
+                bingoData.forEach(item => {
+                    item.isBingo = true;
+                    const link = item['링크(URL)'] || item.링크 || item.url || item.URL;
+                    if (link) bingoLinks.add(link);
+                });
+
+                // 4. 네이버지도 + 빙고 합치기 (중복 제거: 링크 기준)
+                const uniqueNaverData = naverMapData.filter(item => {
+                    const link = item['링크(URL)'] || item.링크 || item.url || item.URL;
+                    return !link || !bingoLinks.has(link);
+                });
+
+                properties = [...uniqueNaverData, ...bingoData];
+
                 console.log(`[DEBUG] 최종 로드된 매물 데이터:`, properties.length, '개');
-                console.log(`[DEBUG] 첫 번째 매물 샘플:`, properties[0]);
-                
+                console.log(`[DEBUG] (네이버지도: ${uniqueNaverData.length}개 + 빙고: ${bingoData.length}개)`);
+
                 // 초기 로드 시에는 매물을 표시하지 않음
                 filteredProperties = [];
-                updateStatus(`매물 ${properties.length}개 로드 완료 - 검색 버튼을 눌러주세요`);
+                updateStatus(`매물 ${properties.length}개 로드 완료 (빙고 ${bingoData.length}개 포함)`);
                 document.getElementById('totalCount').textContent = `총 매물: ${properties.length}개`;
                 document.getElementById('shownCount').textContent = `표시 중: 0개`;
-                
-                // 자동 검색 기능 제거 - 사용자가 직접 검색 버튼을 눌러야 함
+
                 console.log(`[DEBUG] 매물 로딩 완료 - 검색 버튼을 눌러주세요`);
             } catch (error) {
                 console.error('데이터 로드 오류:', error);
@@ -945,9 +1182,9 @@
         function onFilterSearch() {
             const keyword = document.getElementById('search-input').value.trim();
             const type = document.querySelector('input[name="type"]:checked').value; // 'villa'
-            const region = document.querySelector('input[name="region"]:checked').value; // 'gangnam' or 'songpa'
-            const status = document.querySelector('input[name="status"]:checked').value; // 전세/월세
-            const category = document.querySelector('input[name="category"]:checked').value; // 공클/온하/갠매
+            const regions = Array.from(document.querySelectorAll('input[name="region"]:checked')).map(cb => cb.value); // 강남/송파 다중 선택
+            const statuses = Array.from(document.querySelectorAll('input[name="status"]:checked')).map(cb => cb.value); // 전세/월세 다중 선택
+            const categories = Array.from(document.querySelectorAll('input[name="category"]:checked')).map(cb => cb.value); // 공클/온하/갠매 다중 선택
             const dateValue = document.querySelector('input[name="date"]:checked').value; // '0'(오늘), '1'(어제), '2'~'7'(N일 전), or ''
             // 보증금/월세 필터 값 읽기
             const depositMin = document.getElementById('deposit-min').value;
@@ -957,21 +1194,23 @@
             const roomFilter = document.querySelector('input[name="room"]:checked').value; // '', '1', '2', '3'
             const today = new Date();
             const singleOnly = document.getElementById('singleOnlyCheckbox').checked;
+            const bingoOnly = document.getElementById('bingoOnlyCheckbox').checked;
 
-            // 지역이 변경된 경우 데이터 다시 로드
-            const currentRegion = document.querySelector('input[name="region"]:checked').value;
-            if (currentRegion !== lastLoadedRegion) {
-                lastLoadedRegion = currentRegion;
-                loadProperties().then(() => {
-                    filterAndDisplay();
-                });
-            } else {
-                filterAndDisplay();
-            }
+            // 항상 로컬 필터링만 수행 (지역 변경 시에도 DB 재로드 없음)
+            // 데이터는 앱 시작 시 1회만 로드됨
+            filterAndDisplay();
             
             function filterAndDisplay() {
                 console.log(`[DEBUG] 필터링 시작 - 전체 매물:`, properties.length, '개');
-                let filtered = properties.filter(row => {
+
+                // 빙고 필터: 빙고만 체크된 경우 빙고 데이터만 사용
+                let baseData = properties;
+                if (bingoOnly) {
+                    baseData = bingoData;
+                    console.log(`[DEBUG] 빙고 필터 적용 - 빙고 매물:`, bingoData.length, '개');
+                }
+
+                let filtered = baseData.filter(row => {
                     // 1. 매물유형: 모든 매물이 빌라이므로 항상 true
                     const typeMatch = true;
                     
@@ -983,28 +1222,28 @@
                         });
                     }
 
-                    // 2. 지역 필터: 개선된 지역 판단 함수 사용
+                    // 2. 지역 필터: 다중 선택 지원
                     const address = row.주소 || '';
-                    const regionMatch = isInRegion(address, region);
+                    const regionMatch = regions.length === 0 || regions.some(r => isInRegion(address, r));
                     
                     // 디버깅: 첫 번째 매물의 지역 정보 출력
                     if (properties.indexOf(row) === 0) {
                         console.log(`[DEBUG] 첫 번째 매물 지역 정보:`, {
                             주소: row.주소,
-                            선택된지역: region,
+                            선택된지역: regions,
                             regionMatch: regionMatch
                         });
                     }
 
-                    // 3. 거래방식 필터: 개선된 거래방식 판단 함수 사용
+                    // 3. 거래방식 필터: 다중 선택 지원
                     const tradeType = row.거래방식 || '';
-                    const statusMatch = isTradeType(tradeType, status);
+                    const statusMatch = statuses.length === 0 || statuses.some(s => isTradeType(tradeType, s));
                     
                     // 디버깅: 첫 번째 매물의 거래방식 정보 출력
                     if (properties.indexOf(row) === 0) {
                         console.log(`[DEBUG] 첫 번째 매물 거래방식 정보:`, {
                             거래방식: row.거래방식,
-                            선택된구분: status,
+                            선택된구분: statuses,
                             statusMatch: statusMatch
                         });
                     }
@@ -1051,8 +1290,8 @@
                         if (rentMax && rent > parseFloat(rentMax)) rentOk = false;
                     }
 
-                    // 7. 공클/온하/갠매 필터링: 개선된 카테고리 판단 함수 사용
-                    const categoryMatch = isCategory(row, category);
+                    // 7. 공클/온하/갠매 필터링: 다중 선택 지원
+                    const categoryMatch = categories.length === 0 || categories.some(cat => isCategory(row, cat));
                     
                     // 디버깅: 첫 번째 매물의 카테고리 정보 출력
                     if (properties.indexOf(row) === 0) {
@@ -1060,6 +1299,7 @@
                             공클: row.공클,
                             온하: row.온하,
                             갠매: row.갠매,
+                            선택된카테고리: categories,
                             categoryMatch: categoryMatch
                         });
                     }
@@ -1230,14 +1470,34 @@
         function createMarker(propertiesGroup, coords, address) {
             console.log(`[DEBUG] 마커 생성: ${address} (${propertiesGroup.length}개 매물)`);
             const propertyCount = propertiesGroup.length;
-            const displayText = propertyCount > 1 ? `${address} (${propertyCount}개)` : address;
-            
+
+            // 빙고 매물 포함 여부 확인
+            const hasBingo = propertiesGroup.some(p => {
+                const link = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return p.isBingo || (link && bingoLinks.has(link));
+            });
+
+            // 마커 색상 결정: 빙고(골드) > 복수(주황) > 단일(파란)
+            let markerColor, textColor;
+            if (hasBingo) {
+                markerColor = '#FFD700'; // 골드 (빙고)
+                textColor = '#333';
+            } else if (propertyCount > 1) {
+                markerColor = '#FF6B35'; // 주황 (복수 매물)
+                textColor = 'white';
+            } else {
+                markerColor = '#3182F6'; // 파란 (단일 매물)
+                textColor = 'white';
+            }
+
+            const displayText = (hasBingo ? '★ ' : '') + (propertyCount > 1 ? `${address} (${propertyCount}개)` : address);
+
             const marker = new naver.maps.Marker({
                 position: coords,
                 map: map,
                 title: displayText,
                 icon: {
-                    content: `<div style="background: ${propertyCount > 1 ? '#FF6B35' : '#3182F6'}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.18); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayText}</div>`,
+                    content: `<div style="background: ${markerColor}; color: ${textColor}; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.18); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayText}</div>`,
                     size: new naver.maps.Size(30, 30),
                     anchor: new naver.maps.Point(15, 15)
                 }
@@ -1294,10 +1554,29 @@
                 const rent = property.월세 || '';
                 // 링크
                 const link = property['링크(URL)'] || property.링크 || property.url || property.URL;
-                
+
+                // 빙고 상태 확인
+                const isBingo = property.isBingo || (link && bingoLinks.has(link));
+                const starStyle = isBingo
+                    ? 'color:#FFD700; font-size:22px; cursor:pointer; text-shadow: 0 0 3px #FFA500;'
+                    : 'color:#ccc; font-size:22px; cursor:pointer;';
+                const starTitle = isBingo ? '빙고 해제' : '빙고 추가';
+
+                // 별표 버튼 HTML (관리자 모드에서만 클릭 가능)
+                const starButtonHtml = link
+                    ? `<span onclick="window.toggleBingoFromInfo(${index}, '${link.replace(/'/g, "\\'")}', this)" style="${starStyle}" title="${starTitle}">★</span>`
+                    : '';
+
+                // 배경색: 빙고 매물은 연한 노란색
+                const bgColor = isBingo ? '#FFFBEB' : '#F9FAFB';
+                const borderColor = isBingo ? '#FFD700' : '#E5E8EB';
+
                 content += `
-                    <div style="border:1px solid #E5E8EB; border-radius:8px; padding:12px; margin-bottom:8px; background:#F9FAFB;">
-                        <div style="font-size:14px; color:#191F28; font-weight:600; margin-bottom:6px;">매물 ${index + 1}</div>
+                    <div style="border:2px solid ${borderColor}; border-radius:8px; padding:12px; margin-bottom:8px; background:${bgColor};">
+                        <div style="font-size:14px; color:#191F28; font-weight:600; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                            <span>매물 ${index + 1}</span>
+                            ${starButtonHtml}
+                        </div>
                         <div style="font-size:14px; color:#191F28; margin-bottom:4px;">보증금 <b>${deposit}</b> / 월세 <b>${rent}</b></div>
                         <div style="font-size:13px; color:#6B7684; margin-bottom:4px;">거래방식 : ${property.거래방식 || '-'}</div>
                         <div style="font-size:13px; color:#6B7684; margin-bottom:8px;">등록일 : ${date || '-'}</div>
