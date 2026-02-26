@@ -270,6 +270,17 @@
             <div id="adminError" style="color:#e74c3c; margin-top:10px; font-size:14px;"></div>
         </div>
     </div>
+    <!-- 사용자 인증 모달 -->
+    <div id="userModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:10000; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,0.18); padding:32px; min-width:280px; text-align:center;">
+            <h3 id="userModalTitle" style="margin-bottom:16px; color:#3182F6;">사용자 인증</h3>
+            <input type="password" id="userPasswordInput" placeholder="비밀번호" style="font-size:18px; padding:10px 14px; border-radius:8px; border:1.5px solid #3182F6; margin-bottom:14px; width:80%;" />
+            <br/>
+            <button id="userSubmitBtn" style="background:#3182F6; color:#fff; font-weight:700; border:none; border-radius:8px; padding:10px 24px; font-size:16px; cursor:pointer;">확인</button>
+            <button id="userCancelBtn" style="margin-left:8px; background:#E5E8EB; color:#333D4B; font-weight:600; border:none; border-radius:8px; padding:10px 18px; font-size:15px; cursor:pointer;">취소</button>
+            <div id="userError" style="color:#e74c3c; margin-top:10px; font-size:14px;"></div>
+        </div>
+    </div>
     <div class="map-container">
         <div id="map"></div>
         <button class="filter-toggle-btn" id="filterToggleBtn">필터 접기</button>
@@ -311,6 +322,13 @@
               <label style="margin-left:11px; font-weight:600; color:#FFD700; cursor:pointer; user-select:none; font-size:13px; background:#333; padding:4px 8px; border-radius:4px;">
                 <input type="checkbox" id="bingoOnlyCheckbox" style="vertical-align:middle; margin-right:4px;" />빙고
               </label>
+              <!-- 색깔 필터 (로그인 시만 표시) -->
+              <span id="colorFilterRow" style="display:none; margin-left:8px;">
+                <label style="cursor:pointer; font-size:16px; padding:2px 4px;" title="빨강"><input type="checkbox" id="redFilterCheckbox" style="display:none;" />🔴</label>
+                <label style="cursor:pointer; font-size:16px; padding:2px 4px;" title="주황"><input type="checkbox" id="orangeFilterCheckbox" style="display:none;" />🟠</label>
+                <label style="cursor:pointer; font-size:16px; padding:2px 4px;" title="보라"><input type="checkbox" id="purpleFilterCheckbox" style="display:none;" />🟣</label>
+                <label style="cursor:pointer; font-size:16px; padding:2px 4px;" title="초록"><input type="checkbox" id="greenFilterCheckbox" style="display:none;" />🟢</label>
+              </span>
             </div>
             <div class="filter-row price-row">
               <div class="filter-label">보증금</div>
@@ -369,6 +387,13 @@
         <div style="position: absolute; top: 100px; right: 18px; background: #6366F1; color: white; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" id="shownCount">
             표시 중: 0개
         </div>
+        <!-- 사용자 로그인 버튼들 -->
+        <button id="wiplusModeBtn" style="position: absolute; top: 145px; right: 18px; background: #6B7684; color: white; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,0.15); border: none; cursor: pointer;">
+            위플러스
+        </button>
+        <button id="binsheetModeBtn" style="position: absolute; top: 175px; right: 18px; background: #6B7684; color: white; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,0.15); border: none; cursor: pointer;">
+            빈시트
+        </button>
 
     </div>
 
@@ -392,6 +417,24 @@
         let isAdminMode = false; // 관리자 모드 활성화 여부
         let bingoData = []; // 빙고 테이블 데이터
         let bingoLinks = new Set(); // 빙고 매물 링크 Set (빠른 조회용)
+
+        // 사용자별 색깔 태그 관련 전역 변수
+        let currentUser = null; // 'wiplus', 'binsheet', null
+        let userTagData = []; // 사용자_태그 테이블 데이터
+        let userTagMap = new Map(); // 링크 → 색깔 (빠른 조회)
+        let pendingUserType = null; // 로그인 시도 중인 사용자 타입
+
+        const USER_PASSWORDS = {
+            'wiplus': '1231',
+            'binsheet': '1213'
+        };
+
+        const TAG_COLORS = {
+            'red': { bg: '#FF4444', emoji: '🔴', name: '빨강' },
+            'orange': { bg: '#FF9800', emoji: '🟠', name: '주황' },
+            'purple': { bg: '#9C27B0', emoji: '🟣', name: '보라' },
+            'green': { bg: '#4CAF50', emoji: '🟢', name: '초록' }
+        };
 
         // 기본 비밀번호
         const DEFAULT_PASSWORD = 'ejxkqdnjs1';
@@ -537,6 +580,262 @@
             }
         }
 
+        // 사용자 로그인 모달 및 이벤트 핸들러
+        document.addEventListener('DOMContentLoaded', function() {
+            const userModal = document.getElementById('userModal');
+            const userModalTitle = document.getElementById('userModalTitle');
+            const userPasswordInput = document.getElementById('userPasswordInput');
+            const userSubmitBtn = document.getElementById('userSubmitBtn');
+            const userCancelBtn = document.getElementById('userCancelBtn');
+            const userError = document.getElementById('userError');
+            const wiplusModeBtn = document.getElementById('wiplusModeBtn');
+            const binsheetModeBtn = document.getElementById('binsheetModeBtn');
+
+            // 위플러스 버튼 클릭
+            wiplusModeBtn.addEventListener('click', function() {
+                if (currentUser === 'wiplus') {
+                    // 이미 로그인 상태 → 로그아웃
+                    logoutUser();
+                } else {
+                    // 로그인 모달 표시
+                    showUserLoginModal('wiplus');
+                }
+            });
+
+            // 빈시트 버튼 클릭
+            binsheetModeBtn.addEventListener('click', function() {
+                if (currentUser === 'binsheet') {
+                    logoutUser();
+                } else {
+                    showUserLoginModal('binsheet');
+                }
+            });
+
+            userSubmitBtn.addEventListener('click', tryUserAuth);
+            userPasswordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') tryUserAuth();
+            });
+            userCancelBtn.addEventListener('click', function() {
+                userModal.style.display = 'none';
+            });
+        });
+
+        // 사용자 로그인 모달 표시
+        function showUserLoginModal(userType) {
+            pendingUserType = userType;
+            const modal = document.getElementById('userModal');
+            const title = document.getElementById('userModalTitle');
+            const input = document.getElementById('userPasswordInput');
+            const error = document.getElementById('userError');
+
+            title.textContent = userType === 'wiplus' ? '위플러스 인증' : '빈시트 인증';
+            title.style.color = userType === 'wiplus' ? '#4CAF50' : '#2196F3';
+            input.style.borderColor = userType === 'wiplus' ? '#4CAF50' : '#2196F3';
+            input.value = '';
+            error.textContent = '';
+            modal.style.display = 'flex';
+            input.focus();
+        }
+
+        // 사용자 인증 처리
+        async function tryUserAuth() {
+            const input = document.getElementById('userPasswordInput');
+            const error = document.getElementById('userError');
+            const modal = document.getElementById('userModal');
+
+            if (input.value === USER_PASSWORDS[pendingUserType]) {
+                currentUser = pendingUserType;
+                modal.style.display = 'none';
+                updateUserModeUI();
+                await loadUserTags();
+                document.getElementById('colorFilterRow').style.display = 'inline';
+                updateStatus(`${currentUser === 'wiplus' ? '위플러스' : '빈시트'} 모드 활성화됨`);
+                // 마커 재표시 (색깔 표시 위해)
+                if (filteredProperties.length > 0) {
+                    displayMarkersOnMap();
+                }
+            } else {
+                error.textContent = '비밀번호가 올바르지 않습니다.';
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        // 사용자 로그아웃
+        function logoutUser() {
+            currentUser = null;
+            userTagData = [];
+            userTagMap.clear();
+            updateUserModeUI();
+            document.getElementById('colorFilterRow').style.display = 'none';
+            // 색깔 필터 체크박스 초기화
+            document.getElementById('redFilterCheckbox').checked = false;
+            document.getElementById('orangeFilterCheckbox').checked = false;
+            document.getElementById('purpleFilterCheckbox').checked = false;
+            document.getElementById('greenFilterCheckbox').checked = false;
+            updateStatus('사용자 로그아웃됨');
+            if (filteredProperties.length > 0) {
+                displayMarkersOnMap();
+            }
+        }
+
+        // 사용자 모드 UI 업데이트
+        function updateUserModeUI() {
+            const wiplusBtn = document.getElementById('wiplusModeBtn');
+            const binsheetBtn = document.getElementById('binsheetModeBtn');
+
+            if (currentUser === 'wiplus') {
+                wiplusBtn.style.background = '#4CAF50';
+                wiplusBtn.textContent = '위플러스 ON';
+                binsheetBtn.style.background = '#6B7684';
+                binsheetBtn.textContent = '빈시트';
+            } else if (currentUser === 'binsheet') {
+                wiplusBtn.style.background = '#6B7684';
+                wiplusBtn.textContent = '위플러스';
+                binsheetBtn.style.background = '#2196F3';
+                binsheetBtn.textContent = '빈시트 ON';
+            } else {
+                wiplusBtn.style.background = '#6B7684';
+                wiplusBtn.textContent = '위플러스';
+                binsheetBtn.style.background = '#6B7684';
+                binsheetBtn.textContent = '빈시트';
+            }
+        }
+
+        // 사용자 태그 데이터 로드
+        async function loadUserTags() {
+            if (!currentUser) return;
+
+            try {
+                updateStatus('사용자 태그 로드 중...');
+                const { data, error } = await supabaseClient
+                    .from('사용자_태그')
+                    .select('*')
+                    .eq('user_type', currentUser);
+
+                if (error) {
+                    console.warn('사용자 태그 로드 오류:', error);
+                    userTagData = [];
+                } else {
+                    userTagData = data || [];
+                }
+
+                // Map 구성 (빠른 조회용)
+                userTagMap.clear();
+                userTagData.forEach(item => {
+                    const link = item['링크(URL)'];
+                    if (link) userTagMap.set(link, item.color);
+                });
+
+                console.log(`[DEBUG] 사용자 태그 로드: ${userTagData.length}개`);
+            } catch (error) {
+                console.error('사용자 태그 로드 오류:', error);
+            }
+        }
+
+        // 색깔 태그 토글
+        async function toggleColorTag(link, color) {
+            if (!currentUser) {
+                alert('로그인이 필요합니다.');
+                return;
+            }
+
+            // 빙고 매물만 색깔 태그 가능
+            if (!bingoLinks.has(link)) {
+                alert('빙고 매물에만 색깔 태그를 추가할 수 있습니다.');
+                return;
+            }
+
+            try {
+                const currentColor = userTagMap.get(link);
+
+                if (currentColor === color) {
+                    // 같은 색 클릭 → 태그 해제
+                    const { error } = await supabaseClient
+                        .from('사용자_태그')
+                        .delete()
+                        .eq('"링크(URL)"', link)
+                        .eq('user_type', currentUser);
+
+                    if (error) throw error;
+                    userTagMap.delete(link);
+                    updateStatus(`${TAG_COLORS[color].name} 태그 해제됨`);
+                    updateMarkerIcon(link);  // 마커 즉시 업데이트
+                } else {
+                    // 다른 색 클릭 → UPSERT
+                    const { error } = await supabaseClient
+                        .from('사용자_태그')
+                        .upsert({
+                            '링크(URL)': link,
+                            user_type: currentUser,
+                            color: color
+                        }, { onConflict: '"링크(URL)",user_type' });
+
+                    if (error) throw error;
+                    userTagMap.set(link, color);
+                    updateStatus(`${TAG_COLORS[color].name} 태그 추가됨`);
+                    updateMarkerIcon(link);  // 마커 즉시 업데이트
+                }
+            } catch (error) {
+                console.error('색깔 태그 토글 오류:', error);
+                alert('색깔 태그 처리 중 오류: ' + error.message);
+            }
+        }
+
+        window.toggleColorTag = toggleColorTag;
+
+        // 개별 마커 아이콘 업데이트 함수 (색깔 변경 시 즉시 반영)
+        function updateMarkerIcon(link) {
+            // 해당 링크를 가진 마커 찾기
+            const marker = markers.find(m => m.links && m.links.includes(link));
+            if (!marker) return;
+
+            // 마커의 propertiesGroup 정보로 색상 결정
+            const propertiesGroup = marker.propertiesGroup || [];
+            const propertyCount = propertiesGroup.length;
+
+            const hasBingo = propertiesGroup.some(p => {
+                const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return p.isBingo || (pLink && bingoLinks.has(pLink));
+            });
+
+            let userColor = null;
+            if (currentUser) {
+                for (const p of propertiesGroup) {
+                    const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                    const tagColor = userTagMap.get(pLink);
+                    if (tagColor) {
+                        userColor = TAG_COLORS[tagColor].bg;
+                        break;
+                    }
+                }
+            }
+
+            // 마커 스타일 결정
+            let markerStyle, textColor;
+            if (hasBingo && userColor) {
+                markerStyle = `background: linear-gradient(to right, #FFD700 50%, ${userColor} 50%);`;
+                textColor = '#333';
+            } else if (hasBingo) {
+                markerStyle = 'background: #FFD700;';
+                textColor = '#333';
+            } else if (propertyCount > 1) {
+                markerStyle = 'background: #FF6B35;';
+                textColor = 'white';
+            } else {
+                markerStyle = 'background: #3182F6;';
+                textColor = 'white';
+            }
+
+            // 마커 아이콘 업데이트
+            const displayText = marker.getTitle();
+            marker.setIcon({
+                content: `<div style="${markerStyle} color: ${textColor}; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.18); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayText}</div>`,
+                size: new naver.maps.Size(30, 30),
+                anchor: new naver.maps.Point(15, 15)
+            });
+        }
+
         // 빙고 토글 함수 (별표 클릭 시 호출)
         async function toggleBingo(property) {
             if (!isAdminMode) {
@@ -655,6 +954,22 @@
                     card.style.background = isBingoNow ? '#FFFBEB' : '#F9FAFB';
                     card.style.borderColor = isBingoNow ? '#FFD700' : '#E5E8EB';
                 }
+            }
+        };
+
+        // 인포윈도우에서 색깔 버튼 클릭 시 호출되는 함수
+        window.toggleColorTagFromInfo = async function(link, color, element) {
+            await toggleColorTag(link, color);
+
+            // 색깔 버튼 스타일 즉시 업데이트
+            const currentColor = userTagMap.get(link);
+            const parent = element.parentElement;
+            if (parent) {
+                const buttons = parent.querySelectorAll('span[onclick*="toggleColorTagFromInfo"]');
+                buttons.forEach(btn => {
+                    const btnColor = btn.getAttribute('onclick').match(/'([^']+)', '([^']+)'/)?.[2];
+                    btn.style.opacity = (currentColor === btnColor) ? '1' : '0.4';
+                });
             }
         };
 
@@ -1194,10 +1509,19 @@
             const singleOnly = document.getElementById('singleOnlyCheckbox').checked;
             const bingoOnly = document.getElementById('bingoOnlyCheckbox').checked;
 
+            // 색깔 필터 값 읽기 (로그인 시만 활성화)
+            const colorFilters = [];
+            if (currentUser) {
+                if (document.getElementById('redFilterCheckbox').checked) colorFilters.push('red');
+                if (document.getElementById('orangeFilterCheckbox').checked) colorFilters.push('orange');
+                if (document.getElementById('purpleFilterCheckbox').checked) colorFilters.push('purple');
+                if (document.getElementById('greenFilterCheckbox').checked) colorFilters.push('green');
+            }
+
             // 항상 로컬 필터링만 수행 (지역 변경 시에도 DB 재로드 없음)
             // 데이터는 앱 시작 시 1회만 로드됨
             filterAndDisplay();
-            
+
             function filterAndDisplay() {
                 console.log(`[DEBUG] 필터링 시작 - 전체 매물:`, properties.length, '개');
 
@@ -1206,6 +1530,16 @@
                 if (bingoOnly) {
                     baseData = bingoData;
                     console.log(`[DEBUG] 빙고 필터 적용 - 빙고 매물:`, bingoData.length, '개');
+                }
+
+                // 색깔 필터: 선택된 색깔이 있으면 해당 색깔 태그된 매물만
+                if (colorFilters.length > 0) {
+                    baseData = baseData.filter(row => {
+                        const link = row['링크(URL)'] || row.링크 || row.url || row.URL;
+                        const tagColor = userTagMap.get(link);
+                        return tagColor && colorFilters.includes(tagColor);
+                    });
+                    console.log(`[DEBUG] 색깔 필터 적용 - 매물:`, baseData.length, '개');
                 }
 
                 let filtered = baseData.filter(row => {
@@ -1475,16 +1809,33 @@
                 return p.isBingo || (link && bingoLinks.has(link));
             });
 
-            // 마커 색상 결정: 빙고(골드) > 복수(주황) > 단일(파란)
-            let markerColor, textColor;
-            if (hasBingo) {
-                markerColor = '#FFD700'; // 골드 (빙고)
+            // 사용자 색깔 태그 확인 (로그인 시만)
+            let userColor = null;
+            if (currentUser) {
+                for (const p of propertiesGroup) {
+                    const link = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                    const tagColor = userTagMap.get(link);
+                    if (tagColor) {
+                        userColor = TAG_COLORS[tagColor].bg;
+                        break;
+                    }
+                }
+            }
+
+            // 마커 색상 결정: 반반(빙고+사용자) > 빙고(골드) > 복수(주황) > 단일(파란)
+            let markerStyle, textColor;
+            if (hasBingo && userColor) {
+                // 반반 색상: 왼쪽 노란색(빙고), 오른쪽 사용자 색깔
+                markerStyle = `background: linear-gradient(to right, #FFD700 50%, ${userColor} 50%);`;
+                textColor = '#333';
+            } else if (hasBingo) {
+                markerStyle = 'background: #FFD700;';
                 textColor = '#333';
             } else if (propertyCount > 1) {
-                markerColor = '#FF6B35'; // 주황 (복수 매물)
+                markerStyle = 'background: #FF6B35;';
                 textColor = 'white';
             } else {
-                markerColor = '#3182F6'; // 파란 (단일 매물)
+                markerStyle = 'background: #3182F6;';
                 textColor = 'white';
             }
 
@@ -1495,7 +1846,7 @@
                 map: map,
                 title: displayText,
                 icon: {
-                    content: `<div style="background: ${markerColor}; color: ${textColor}; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.18); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayText}</div>`,
+                    content: `<div style="${markerStyle} color: ${textColor}; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.18); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayText}</div>`,
                     size: new naver.maps.Size(30, 30),
                     anchor: new naver.maps.Point(15, 15)
                 }
@@ -1524,6 +1875,9 @@
                 }
             });
             marker.infoWindow = infoWindow;
+            // 마커에 링크 정보 저장 (개별 마커 업데이트용)
+            marker.links = propertiesGroup.map(p => p['링크(URL)'] || p.링크 || p.url || p.URL).filter(Boolean);
+            marker.propertiesGroup = propertiesGroup;
             markers.push(marker);
         }
 
@@ -1565,6 +1919,20 @@
                     ? `<span onclick="window.toggleBingoFromInfo(${index}, '${link.replace(/'/g, "\\'")}', this)" style="${starStyle}" title="${starTitle}">★</span>`
                     : '';
 
+                // 색깔 버튼 HTML (로그인 사용자 + 빙고 매물만)
+                let colorButtonsHtml = '';
+                if (currentUser && isBingo && link) {
+                    const currentColor = userTagMap.get(link);
+                    const escapedLink = link.replace(/'/g, "\\'");
+                    colorButtonsHtml = '<span style="margin-left:4px;">';
+                    for (const [colorKey, colorInfo] of Object.entries(TAG_COLORS)) {
+                        const isSelected = currentColor === colorKey;
+                        const opacity = isSelected ? '1' : '0.4';
+                        colorButtonsHtml += `<span onclick="window.toggleColorTagFromInfo('${escapedLink}', '${colorKey}', this)" style="cursor:pointer; font-size:14px; opacity:${opacity};" title="${colorInfo.name}">${colorInfo.emoji}</span>`;
+                    }
+                    colorButtonsHtml += '</span>';
+                }
+
                 // 배경색: 빙고 매물은 연한 노란색
                 const bgColor = isBingo ? '#FFFBEB' : '#F9FAFB';
                 const borderColor = isBingo ? '#FFD700' : '#E5E8EB';
@@ -1573,7 +1941,7 @@
                     <div style="border:2px solid ${borderColor}; border-radius:8px; padding:12px; margin-bottom:8px; background:${bgColor};">
                         <div style="font-size:14px; color:#191F28; font-weight:600; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                             <span>매물 ${index + 1}</span>
-                            ${starButtonHtml}
+                            <span>${starButtonHtml}${colorButtonsHtml}</span>
                         </div>
                         <div style="font-size:14px; color:#191F28; margin-bottom:4px;">보증금 <b>${deposit}</b> / 월세 <b>${rent}</b></div>
                         <div style="font-size:13px; color:#6B7684; margin-bottom:4px;">거래방식 : ${property.거래방식 || '-'}</div>
