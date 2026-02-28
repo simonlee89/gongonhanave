@@ -322,6 +322,9 @@
               <label style="margin-left:11px; font-weight:600; color:#FFD700; cursor:pointer; user-select:none; font-size:13px; background:#333; padding:4px 8px; border-radius:4px;">
                 <input type="checkbox" id="bingoOnlyCheckbox" style="vertical-align:middle; margin-right:4px;" />빙고
               </label>
+              <label style="margin-left:11px; font-weight:600; color:#E91E63; cursor:pointer; user-select:none; font-size:13px; background:#FFF0F5; padding:4px 8px; border-radius:4px;">
+                <input type="checkbox" id="recommendOnlyCheckbox" style="vertical-align:middle; margin-right:4px;" />추천
+              </label>
               <!-- 색깔 필터 (로그인 시만 표시) -->
               <span id="colorFilterRow" style="display:none; margin-left:8px;">
                 <label style="cursor:pointer; font-size:16px; padding:2px 4px;" title="빨강"><input type="checkbox" id="redFilterCheckbox" style="display:none;" />🔴</label>
@@ -394,6 +397,9 @@
         <button id="binsheetModeBtn" style="position: absolute; top: 175px; right: 18px; background: #6B7684; color: white; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,0.15); border: none; cursor: pointer;">
             빈시트
         </button>
+        <button id="teamleadModeBtn" style="position: absolute; top: 205px; right: 18px; background: #6B7684; color: white; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 500; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,0.15); border: none; cursor: pointer;">
+            팀장
+        </button>
 
     </div>
 
@@ -424,9 +430,15 @@
         let userTagMap = new Map(); // 링크 → 색깔 (빠른 조회)
         let pendingUserType = null; // 로그인 시도 중인 사용자 타입
 
+        // 팀장 추천 관련 전역 변수
+        let isTeamleadMode = false; // 팀장 로그인 상태
+        let recommendData = []; // 추천 데이터 배열
+        let recommendLinks = new Set(); // 추천 링크 Set (빠른 조회)
+
         const USER_PASSWORDS = {
             'wiplus': '1231',
-            'binsheet': '1213'
+            'binsheet': '1213',
+            'teamlead': '159'  // 팀장 비밀번호
         };
 
         const TAG_COLORS = {
@@ -439,7 +451,7 @@
         // 기본 비밀번호
         const DEFAULT_PASSWORD = 'ejxkqdnjs1';
         // 관리자 비밀번호(고정)
-        const ADMIN_PASSWORD = 'ejxkqdnjs88';
+        const ADMIN_PASSWORD = '6045';
         // 로컬스토리지에서 비밀번호 가져오기
         function getPagePassword() {
             return localStorage.getItem('page_password') || DEFAULT_PASSWORD;
@@ -611,6 +623,16 @@
                 }
             });
 
+            // 팀장 버튼 클릭
+            const teamleadModeBtn = document.getElementById('teamleadModeBtn');
+            teamleadModeBtn.addEventListener('click', function() {
+                if (isTeamleadMode) {
+                    logoutTeamlead();
+                } else {
+                    showUserLoginModal('teamlead');
+                }
+            });
+
             userSubmitBtn.addEventListener('click', tryUserAuth);
             userPasswordInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') tryUserAuth();
@@ -628,9 +650,22 @@
             const input = document.getElementById('userPasswordInput');
             const error = document.getElementById('userError');
 
-            title.textContent = userType === 'wiplus' ? '위플러스 인증' : '빈시트 인증';
-            title.style.color = userType === 'wiplus' ? '#4CAF50' : '#2196F3';
-            input.style.borderColor = userType === 'wiplus' ? '#4CAF50' : '#2196F3';
+            // 사용자 타입별 색상 설정
+            let titleText, titleColor;
+            if (userType === 'wiplus') {
+                titleText = '위플러스 인증';
+                titleColor = '#4CAF50';
+            } else if (userType === 'binsheet') {
+                titleText = '빈시트 인증';
+                titleColor = '#2196F3';
+            } else if (userType === 'teamlead') {
+                titleText = '팀장 인증';
+                titleColor = '#E91E63';
+            }
+
+            title.textContent = titleText;
+            title.style.color = titleColor;
+            input.style.borderColor = titleColor;
             input.value = '';
             error.textContent = '';
             modal.style.display = 'flex';
@@ -644,13 +679,24 @@
             const modal = document.getElementById('userModal');
 
             if (input.value === USER_PASSWORDS[pendingUserType]) {
-                currentUser = pendingUserType;
                 modal.style.display = 'none';
-                updateUserModeUI();
-                await loadUserTags();
-                document.getElementById('colorFilterRow').style.display = 'inline';
-                updateStatus(`${currentUser === 'wiplus' ? '위플러스' : '빈시트'} 모드 활성화됨`);
-                // 마커 재표시 (색깔 표시 위해)
+
+                // 팀장 로그인 처리
+                if (pendingUserType === 'teamlead') {
+                    isTeamleadMode = true;
+                    updateTeamleadModeUI();
+                    await loadRecommendData();
+                    updateStatus('팀장 모드 활성화됨');
+                } else {
+                    // 위플러스/빈시트 로그인 처리
+                    currentUser = pendingUserType;
+                    updateUserModeUI();
+                    await loadUserTags();
+                    document.getElementById('colorFilterRow').style.display = 'inline';
+                    updateStatus(`${currentUser === 'wiplus' ? '위플러스' : '빈시트'} 모드 활성화됨`);
+                }
+
+                // 마커 재표시 (색깔/추천 표시 위해)
                 if (filteredProperties.length > 0) {
                     displayMarkersOnMap();
                 }
@@ -701,6 +747,120 @@
                 binsheetBtn.textContent = '빈시트';
             }
         }
+
+        // 팀장 모드 UI 업데이트
+        function updateTeamleadModeUI() {
+            const teamleadBtn = document.getElementById('teamleadModeBtn');
+            if (isTeamleadMode) {
+                teamleadBtn.style.background = '#E91E63';
+                teamleadBtn.textContent = '팀장 ON';
+            } else {
+                teamleadBtn.style.background = '#6B7684';
+                teamleadBtn.textContent = '팀장';
+            }
+        }
+
+        // 팀장 로그아웃
+        function logoutTeamlead() {
+            isTeamleadMode = false;
+            recommendData = [];
+            recommendLinks.clear();
+            updateTeamleadModeUI();
+            updateStatus('팀장 로그아웃됨');
+            if (filteredProperties.length > 0) {
+                displayMarkersOnMap();
+            }
+        }
+
+        // 추천 데이터 로드
+        async function loadRecommendData() {
+            try {
+                updateStatus('추천 데이터 로드 중...');
+                const { data, error } = await supabaseClient
+                    .from('사용자_태그')
+                    .select('*')
+                    .eq('user_type', 'teamlead')
+                    .eq('color', 'recommend');
+
+                if (error) {
+                    console.warn('추천 데이터 로드 오류:', error);
+                    recommendData = [];
+                } else {
+                    recommendData = data || [];
+                }
+
+                // Set 구성 (빠른 조회용)
+                recommendLinks.clear();
+                recommendData.forEach(item => {
+                    const link = item['링크(URL)'];
+                    if (link) recommendLinks.add(link);
+                });
+
+                console.log(`[DEBUG] 추천 데이터 로드: ${recommendData.length}개`);
+            } catch (error) {
+                console.error('추천 데이터 로드 오류:', error);
+            }
+        }
+
+        // 추천 토글
+        async function toggleRecommend(link) {
+            if (!isTeamleadMode) {
+                alert('팀장 로그인이 필요합니다.');
+                return;
+            }
+
+            try {
+                if (recommendLinks.has(link)) {
+                    // 추천 해제
+                    const { error } = await supabaseClient
+                        .from('사용자_태그')
+                        .delete()
+                        .eq('"링크(URL)"', link)
+                        .eq('user_type', 'teamlead')
+                        .eq('color', 'recommend');
+
+                    if (error) throw error;
+                    recommendLinks.delete(link);
+                    updateStatus('추천 해제됨');
+                    updateMarkerIcon(link);  // 마커 즉시 업데이트
+                } else {
+                    // 추천 추가
+                    const { error } = await supabaseClient
+                        .from('사용자_태그')
+                        .insert({
+                            '링크(URL)': link,
+                            user_type: 'teamlead',
+                            color: 'recommend'
+                        });
+
+                    if (error) throw error;
+                    recommendLinks.add(link);
+                    updateStatus('추천 추가됨');
+                    updateMarkerIcon(link);  // 마커 즉시 업데이트
+                }
+                return true;
+            } catch (error) {
+                console.error('추천 토글 오류:', error);
+                updateStatus('추천 처리 실패');
+                return false;
+            }
+        }
+
+        // 인포윈도우에서 추천 토글
+        window.toggleRecommendFromInfo = async function(link, el) {
+            if (!isTeamleadMode) {
+                alert('팀장 로그인이 필요합니다.');
+                return;
+            }
+
+            const result = await toggleRecommend(link);
+            if (result && el) {
+                // UI 즉시 업데이트
+                const isNowRecommend = recommendLinks.has(link);
+                el.style.color = isNowRecommend ? '#E91E63' : '#ccc';
+                el.title = isNowRecommend ? '추천 해제' : '추천';
+            }
+        };
 
         // 사용자 태그 데이터 로드
         async function loadUserTags() {
@@ -811,14 +971,28 @@
                 }
             }
 
+            // 추천 상태 확인
+            const hasRecommend = propertiesGroup.some(p => {
+                const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return pLink && recommendLinks.has(pLink);
+            });
+
             // 마커 스타일 결정
             let markerStyle, textColor;
             if (hasBingo && userColor) {
                 markerStyle = `background: linear-gradient(to right, #FFD700 50%, ${userColor} 50%);`;
                 textColor = '#333';
+            } else if (hasBingo && hasRecommend) {
+                // 빙고 + 추천: 골드와 핑크 반반
+                markerStyle = 'background: linear-gradient(to right, #FFD700 50%, #E91E63 50%);';
+                textColor = '#333';
             } else if (hasBingo) {
                 markerStyle = 'background: #FFD700;';
                 textColor = '#333';
+            } else if (hasRecommend) {
+                // 추천만: 핑크 테두리
+                markerStyle = 'background: #3182F6; border: 3px solid #E91E63 !important;';
+                textColor = 'white';
             } else if (propertyCount > 1) {
                 markerStyle = 'background: #FF6B35;';
                 textColor = 'white';
@@ -1016,10 +1190,15 @@
                 // 필터 입력값 초기화
                 document.getElementById('search-input').value = '';
                 document.querySelector('input[name="type"][value="villa"]').checked = true;
-                document.querySelector('input[name="region"][value="gangnam"]').checked = true;
-                document.querySelector('input[name="status"][value="전세"]').checked = true;
+                // 지역 체크박스 모두 해제
+                document.querySelectorAll('input[name="region"]').forEach(cb => cb.checked = false);
+                // 구분 체크박스 모두 해제
+                document.querySelectorAll('input[name="status"]').forEach(cb => cb.checked = false);
+                // 매물상태 체크박스 모두 해제
+                document.querySelectorAll('input[name="category"]').forEach(cb => cb.checked = false);
                 document.getElementById('singleOnlyCheckbox').checked = false; // 체크박스 초기화
                 document.getElementById('bingoOnlyCheckbox').checked = false; // 빙고 체크박스 초기화
+                document.getElementById('recommendOnlyCheckbox').checked = false; // 추천 체크박스 초기화
                 document.getElementById('deposit-min').value = '';
                 document.getElementById('deposit-max').value = '';
                 document.getElementById('rent-min').value = '';
@@ -1208,6 +1387,29 @@
                     if (link) bingoLinks.add(link);
                 });
 
+                // 3.5. 추천 데이터 로드 (모든 사용자가 볼 수 있음)
+                const { data: recommendResult, error: recommendError } = await supabaseClient
+                    .from('사용자_태그')
+                    .select('*')
+                    .eq('user_type', 'teamlead')
+                    .eq('color', 'recommend');
+
+                if (recommendError) {
+                    console.warn('[DEBUG] 추천 데이터 로드 오류:', recommendError);
+                    recommendData = [];
+                } else {
+                    recommendData = recommendResult || [];
+                }
+
+                // recommendLinks Set 구성
+                recommendLinks.clear();
+                recommendData.forEach(item => {
+                    const link = item['링크(URL)'];
+                    if (link) recommendLinks.add(link);
+                });
+
+                console.log(`[DEBUG] 추천 데이터 개수: ${recommendData.length}개`);
+
                 // 4. 네이버지도 + 빙고 합치기 (중복 제거: 링크 기준)
                 const uniqueNaverData = naverMapData.filter(item => {
                     const link = item['링크(URL)'] || item.링크 || item.url || item.URL;
@@ -1221,7 +1423,7 @@
 
                 // 초기 로드 시에는 매물을 표시하지 않음
                 filteredProperties = [];
-                updateStatus(`매물 ${properties.length}개 로드 완료 (빙고 ${bingoData.length}개 포함)`);
+                updateStatus(`매물 ${properties.length}개 로드 완료 (빙고 ${bingoData.length}개, 추천 ${recommendData.length}개)`);
                 document.getElementById('totalCount').textContent = `총 매물: ${properties.length}개`;
                 document.getElementById('shownCount').textContent = `표시 중: 0개`;
 
@@ -1492,7 +1694,7 @@
             return amount;
         }
 
-        function onFilterSearch() {
+        async function onFilterSearch() {
             const keyword = document.getElementById('search-input').value.trim();
             const type = document.querySelector('input[name="type"]:checked').value; // 'villa'
             const regions = Array.from(document.querySelectorAll('input[name="region"]:checked')).map(cb => cb.value); // 강남/송파 다중 선택
@@ -1508,6 +1710,7 @@
             const today = new Date();
             const singleOnly = document.getElementById('singleOnlyCheckbox').checked;
             const bingoOnly = document.getElementById('bingoOnlyCheckbox').checked;
+            const recommendOnly = document.getElementById('recommendOnlyCheckbox').checked;
 
             // 색깔 필터 값 읽기 (로그인 시만 활성화)
             const colorFilters = [];
@@ -1520,9 +1723,9 @@
 
             // 항상 로컬 필터링만 수행 (지역 변경 시에도 DB 재로드 없음)
             // 데이터는 앱 시작 시 1회만 로드됨
-            filterAndDisplay();
+            await filterAndDisplay();
 
-            function filterAndDisplay() {
+            async function filterAndDisplay() {
                 console.log(`[DEBUG] 필터링 시작 - 전체 매물:`, properties.length, '개');
 
                 // 빙고 필터: 빙고만 체크된 경우 빙고 데이터만 사용
@@ -1540,6 +1743,20 @@
                         return tagColor && colorFilters.includes(tagColor);
                     });
                     console.log(`[DEBUG] 색깔 필터 적용 - 매물:`, baseData.length, '개');
+                }
+
+                // 추천 필터: 추천 체크 시 추천 매물만 표시
+                if (recommendOnly) {
+                    // 추천 데이터가 없으면 최신 데이터 로드 (새로고침 없이 추천 확인 가능)
+                    if (recommendLinks.size === 0) {
+                        await loadRecommendData();
+                        console.log(`[DEBUG] 추천 데이터 자동 리로드 - ${recommendLinks.size}개`);
+                    }
+                    baseData = baseData.filter(row => {
+                        const link = row['링크(URL)'] || row.링크 || row.url || row.URL;
+                        return link && recommendLinks.has(link);
+                    });
+                    console.log(`[DEBUG] 추천 필터 적용 - 매물:`, baseData.length, '개');
                 }
 
                 let filtered = baseData.filter(row => {
@@ -1822,15 +2039,29 @@
                 }
             }
 
-            // 마커 색상 결정: 반반(빙고+사용자) > 빙고(골드) > 복수(주황) > 단일(파란)
+            // 추천 매물 포함 여부 확인
+            const hasRecommend = propertiesGroup.some(p => {
+                const link = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return link && recommendLinks.has(link);
+            });
+
+            // 마커 색상 결정: 반반(빙고+사용자) > 반반(빙고+추천) > 빙고(골드) > 추천(핑크테두리) > 복수(주황) > 단일(파란)
             let markerStyle, textColor;
             if (hasBingo && userColor) {
                 // 반반 색상: 왼쪽 노란색(빙고), 오른쪽 사용자 색깔
                 markerStyle = `background: linear-gradient(to right, #FFD700 50%, ${userColor} 50%);`;
                 textColor = '#333';
+            } else if (hasBingo && hasRecommend) {
+                // 빙고 + 추천: 골드와 핑크 반반
+                markerStyle = 'background: linear-gradient(to right, #FFD700 50%, #E91E63 50%);';
+                textColor = '#333';
             } else if (hasBingo) {
                 markerStyle = 'background: #FFD700;';
                 textColor = '#333';
+            } else if (hasRecommend) {
+                // 추천만: 핑크 테두리
+                markerStyle = 'background: #3182F6; border: 3px solid #E91E63 !important;';
+                textColor = 'white';
             } else if (propertyCount > 1) {
                 markerStyle = 'background: #FF6B35;';
                 textColor = 'white';
@@ -1839,7 +2070,11 @@
                 textColor = 'white';
             }
 
-            const displayText = (hasBingo ? '★ ' : '') + (propertyCount > 1 ? `${address} (${propertyCount}개)` : address);
+            // 텍스트 표시: 빙고=★, 추천=❤
+            let prefixText = '';
+            if (hasBingo) prefixText += '★ ';
+            if (hasRecommend) prefixText += '❤ ';
+            const displayText = prefixText + (propertyCount > 1 ? `${address} (${propertyCount}개)` : address);
 
             const marker = new naver.maps.Marker({
                 position: coords,
@@ -1933,6 +2168,26 @@
                     colorButtonsHtml += '</span>';
                 }
 
+                // 추천 상태 확인 (모든 사용자가 볼 수 있음)
+                const isRecommend = link && recommendLinks.has(link);
+                const heartStyle = isRecommend
+                    ? 'color:#E91E63; font-size:20px; cursor:pointer; text-shadow: 0 0 3px #E91E63;'
+                    : 'color:#ccc; font-size:20px; cursor:pointer;';
+                const heartTitle = isRecommend ? '추천 해제' : '추천';
+
+                // 하트 버튼 HTML (팀장 모드에서만 클릭 가능, 하지만 모든 사용자가 볼 수 있음)
+                let heartButtonHtml = '';
+                if (link) {
+                    const escapedLink = link.replace(/'/g, "\\'");
+                    if (isTeamleadMode) {
+                        // 팀장: 클릭 가능
+                        heartButtonHtml = `<span onclick="window.toggleRecommendFromInfo('${escapedLink}', this)" style="${heartStyle} margin-left:4px;" title="${heartTitle}">❤</span>`;
+                    } else if (isRecommend) {
+                        // 일반 사용자: 추천된 경우만 표시 (클릭 불가)
+                        heartButtonHtml = `<span style="color:#E91E63; font-size:20px; margin-left:4px; text-shadow: 0 0 3px #E91E63;" title="팀장 추천">❤</span>`;
+                    }
+                }
+
                 // 배경색: 빙고 매물은 연한 노란색
                 const bgColor = isBingo ? '#FFFBEB' : '#F9FAFB';
                 const borderColor = isBingo ? '#FFD700' : '#E5E8EB';
@@ -1941,7 +2196,7 @@
                     <div style="border:2px solid ${borderColor}; border-radius:8px; padding:12px; margin-bottom:8px; background:${bgColor};">
                         <div style="font-size:14px; color:#191F28; font-weight:600; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                             <span>매물 ${index + 1}</span>
-                            <span>${starButtonHtml}${colorButtonsHtml}</span>
+                            <span>${starButtonHtml}${heartButtonHtml}${colorButtonsHtml}</span>
                         </div>
                         <div style="font-size:14px; color:#191F28; margin-bottom:4px;">보증금 <b>${deposit}</b> / 월세 <b>${rent}</b></div>
                         <div style="font-size:13px; color:#6B7684; margin-bottom:4px;">거래방식 : ${property.거래방식 || '-'}</div>
