@@ -270,6 +270,15 @@
             <div id="adminError" style="color:#e74c3c; margin-top:10px; font-size:14px;"></div>
         </div>
     </div>
+    <!-- 삭제 확인 모달 -->
+    <div id="deleteModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:10000; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,0.18); padding:32px; min-width:300px; text-align:center;">
+            <h3 style="margin-bottom:16px; color:#e74c3c;">매물 삭제 확인</h3>
+            <p id="deleteModalMessage" style="margin-bottom:20px; color:#333D4B; font-size:14px; line-height:1.6;">이 매물을 삭제하시겠습니까?</p>
+            <button id="deleteConfirmBtn" style="background:#e74c3c; color:#fff; font-weight:700; border:none; border-radius:8px; padding:10px 24px; font-size:16px; cursor:pointer;">삭제</button>
+            <button id="deleteCancelBtn" style="margin-left:8px; background:#E5E8EB; color:#333D4B; font-weight:600; border:none; border-radius:8px; padding:10px 18px; font-size:15px; cursor:pointer;">취소</button>
+        </div>
+    </div>
     <!-- 사용자 인증 모달 -->
     <div id="userModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:10000; align-items:center; justify-content:center;">
         <div style="background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,0.18); padding:32px; min-width:280px; text-align:center;">
@@ -435,6 +444,10 @@
         let recommendData = []; // 추천 데이터 배열
         let recommendLinks = new Set(); // 추천 링크 Set (빠른 조회)
 
+        // 매물 삭제 관련 전역 변수
+        let pendingDeleteProperty = null; // 삭제 대기 중인 매물 정보
+        let pendingDeleteLink = null; // 삭제 대기 중인 매물 링크
+
         const USER_PASSWORDS = {
             'wiplus': '1231',
             'binsheet': '1213',
@@ -575,6 +588,35 @@
             });
             adminCancelBtn.addEventListener('click', function() {
                 adminModal.style.display = 'none';
+            });
+
+            // 삭제 모달 이벤트 핸들러
+            const deleteModal = document.getElementById('deleteModal');
+            const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
+            const deleteCancelBtn = document.getElementById('deleteCancelBtn');
+
+            deleteConfirmBtn.addEventListener('click', async function() {
+                if (pendingDeleteProperty) {
+                    const success = await deleteProperty(pendingDeleteProperty);
+                    if (success) {
+                        // 모든 열린 인포윈도우 닫기
+                        markers.forEach(m => {
+                            if (m.infoWindow && m.isOpen) {
+                                m.infoWindow.close();
+                                m.isOpen = false;
+                            }
+                        });
+                    }
+                }
+                deleteModal.style.display = 'none';
+                pendingDeleteProperty = null;
+                pendingDeleteLink = null;
+            });
+
+            deleteCancelBtn.addEventListener('click', function() {
+                deleteModal.style.display = 'none';
+                pendingDeleteProperty = null;
+                pendingDeleteLink = null;
             });
         });
 
@@ -1145,6 +1187,123 @@
                     btn.style.opacity = (currentColor === btnColor) ? '1' : '0.4';
                 });
             }
+        };
+
+        // 매물 삭제 함수
+        async function deleteProperty(property) {
+            const link = property['링크(URL)'] || property.링크 || property.url || property.URL;
+
+            if (!link) {
+                alert('매물 링크가 없어 삭제할 수 없습니다.');
+                return false;
+            }
+
+            try {
+                updateStatus('매물 삭제 중...');
+
+                // 1. 관련 데이터 정리 (사용자_태그 테이블)
+                const { error: tagError } = await supabaseClient
+                    .from('사용자_태그')
+                    .delete()
+                    .eq('"링크(URL)"', link);
+
+                if (tagError) {
+                    console.warn('사용자 태그 삭제 오류 (무시됨):', tagError);
+                }
+
+                // 2. 빙고 테이블에서도 삭제
+                const { error: bingoError } = await supabaseClient
+                    .from('빙고')
+                    .delete()
+                    .eq('"링크(URL)"', link);
+
+                if (bingoError) {
+                    console.warn('빙고 데이터 삭제 오류 (무시됨):', bingoError);
+                }
+
+                // 3. 네이버지도 테이블에서 매물 삭제 (링크로 삭제)
+                const { error } = await supabaseClient
+                    .from('네이버지도')
+                    .delete()
+                    .eq('"링크(URL)"', link);
+
+                if (error) throw error;
+
+                // 4. 로컬 데이터에서 제거 (링크로 필터링)
+                properties = properties.filter(p => {
+                    const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                    return pLink !== link;
+                });
+                filteredProperties = filteredProperties.filter(p => {
+                    const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                    return pLink !== link;
+                });
+
+                // bingoLinks 및 관련 데이터에서 제거
+                bingoLinks.delete(link);
+                bingoData = bingoData.filter(item => {
+                    const itemLink = item['링크(URL)'] || item.링크 || item.url || item.URL;
+                    return itemLink !== link;
+                });
+                recommendLinks.delete(link);
+                userTagMap.delete(link);
+
+                // 5. UI 업데이트 - 마커 재생성
+                displayMarkersOnMap();
+
+                // 6. 카운트 업데이트
+                document.getElementById('totalCount').textContent = `총 매물: ${properties.length}개`;
+                document.getElementById('shownCount').textContent = `표시 중: ${filteredProperties.length}개`;
+
+                updateStatus('매물이 삭제되었습니다');
+                console.log(`[DEBUG] 매물 삭제 완료: link=${link}`);
+
+                return true;
+            } catch (error) {
+                console.error('매물 삭제 오류:', error);
+                alert('매물 삭제 중 오류가 발생했습니다: ' + error.message);
+                updateStatus('매물 삭제 오류');
+                return false;
+            }
+        }
+
+        // 전역에서 deleteProperty 호출 가능하도록
+        window.deleteProperty = deleteProperty;
+
+        // 인포윈도우에서 삭제 버튼 클릭 시 호출되는 함수
+        window.deletePropertyFromInfo = function(link) {
+            // 매물 정보 찾기 (링크로 검색)
+            const property = properties.find(p => {
+                const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return pLink === link;
+            }) || filteredProperties.find(p => {
+                const pLink = p['링크(URL)'] || p.링크 || p.url || p.URL;
+                return pLink === link;
+            });
+
+            if (!property) {
+                alert('매물 정보를 찾을 수 없습니다.');
+                return;
+            }
+
+            // 삭제 확인 모달 표시
+            pendingDeleteProperty = property;
+            pendingDeleteLink = link;
+
+            const modal = document.getElementById('deleteModal');
+            const message = document.getElementById('deleteModalMessage');
+            const address = property.주소 || '주소 없음';
+            const deposit = property.전세금 || '-';
+            const rent = property.월세 || '-';
+
+            message.innerHTML = `
+                <strong>${address}</strong><br>
+                보증금: ${deposit} / 월세: ${rent}<br><br>
+                이 매물을 정말 삭제하시겠습니까?<br>
+                <span style="color:#e74c3c; font-size:12px;">* 삭제된 매물은 복구할 수 없습니다.</span>
+            `;
+
+            modal.style.display = 'flex';
         };
 
         // 지오코딩 캐시 로드
@@ -2188,6 +2347,13 @@
                     }
                 }
 
+                // 삭제 버튼 HTML (항상 표시, 클릭 시 관리자 모드 체크)
+                let deleteButtonHtml = '';
+                if (link) {
+                    const escapedLink = link.replace(/'/g, "\\'");
+                    deleteButtonHtml = `<span onclick="window.deletePropertyFromInfo('${escapedLink}')" style="color:#e74c3c; font-size:18px; cursor:pointer; margin-left:6px;" title="매물 삭제">🗑️</span>`;
+                }
+
                 // 배경색: 빙고 매물은 연한 노란색
                 const bgColor = isBingo ? '#FFFBEB' : '#F9FAFB';
                 const borderColor = isBingo ? '#FFD700' : '#E5E8EB';
@@ -2196,7 +2362,7 @@
                     <div style="border:2px solid ${borderColor}; border-radius:8px; padding:12px; margin-bottom:8px; background:${bgColor};">
                         <div style="font-size:14px; color:#191F28; font-weight:600; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                             <span>매물 ${index + 1}</span>
-                            <span>${starButtonHtml}${heartButtonHtml}${colorButtonsHtml}</span>
+                            <span>${starButtonHtml}${heartButtonHtml}${colorButtonsHtml}${deleteButtonHtml}</span>
                         </div>
                         <div style="font-size:14px; color:#191F28; margin-bottom:4px;">보증금 <b>${deposit}</b> / 월세 <b>${rent}</b></div>
                         <div style="font-size:13px; color:#6B7684; margin-bottom:4px;">거래방식 : ${property.거래방식 || '-'}</div>
